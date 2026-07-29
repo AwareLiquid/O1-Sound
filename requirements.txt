@@ -1,0 +1,6 @@
+torch>=2.1
+numpy>=1.24
+soundfile>=0.12   # .opus/.mp3 decoding; .wav works without it
+onnx>=1.16        # export only
+onnxruntime>=1.17 # export verification + int8 only
+pytest>=8         # tests only
