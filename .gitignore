@@ -3,10 +3,10 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
-data/
-checkpoints/
-dist/
-results/
+/data/
+/checkpoints/
+/dist/
+/results/
 *.onnx
 *.pt
 .pytest_cache/
