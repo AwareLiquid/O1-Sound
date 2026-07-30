@@ -62,7 +62,7 @@ def main() -> int:
     args = ap.parse_args()
 
     device = torch.device(args.device)
-    ck = torch.load(args.ckpt, map_location="cpu")
+    ck = torch.load(args.ckpt, map_location="cpu", weights_only=True)
     model = O1Sound(O1SoundConfig(**ck["config"])).to(device)
     model.load_state_dict(ck["model"])
     frontend = LogMel().to(device)

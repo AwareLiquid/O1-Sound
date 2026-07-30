@@ -1,31 +1,38 @@
-"""Greeting words per language, as they appear in MSWC's word directories.
+"""Greeting words per language, exactly as they appear in MSWC's word folders.
 
-MSWC keys clips by the written form, so these are the orthographic entries to
-look for -- not transliterations. A language belongs here only once its
-directory has been confirmed to exist in a downloaded MSWC subset; the loader
-reports any that are missing rather than quietly training on fewer languages
-than the spec claims.
+Every entry below was VERIFIED against the per-language splits csv
+(storage.googleapis.com/public-datasets-mswc/splits/{lang}.tar.gz) on
+2026-07-31 -- the number is the clip count found for that exact string. MSWC
+keys words in native script with diacritics: the earlier draft of this file
+used Latin transliterations (privet, geia, marhaba) and bare ASCII (czesc,
+ola, chao), all of which match ZERO folders.
+
+Dropped after verification, not for lack of trying: Turkish (no merhaba/selam/
+merhabalar), Arabic (no مرحبا/أهلا), Vietnamese (no chào/chao/xin). A language
+with no greeting clips cannot be trained and does not belong in the spec.
+
+Tail warning: languages under ~15 clips (ro 10, id 7, el 6, uk 6) will have
+single-digit positives after the train/dev/test split -- their per-language
+FRR is directional at best, and the README's rule applies: the multilingual
+claim is bounded by the worst measured language.
 """
 
 GREETINGS: dict[str, str] = {
-    "en": "hello",
-    "de": "hallo",
-    "nl": "hallo",
-    "fr": "bonjour",
-    "es": "hola",
-    "it": "ciao",
-    "pt": "ola",
-    "ca": "hola",
-    "pl": "czesc",
-    "cs": "ahoj",
-    "ru": "privet",
-    "uk": "pryvit",
-    "tr": "merhaba",
-    "id": "halo",
-    "vi": "chao",
-    "sv-SE": "hej",
-    "ro": "salut",
-    "el": "geia",
-    "fa": "salam",
-    "ar": "marhaba",
+    "en": "hello",        # 301 clips
+    "fa": "سلام",         # سلام, 562
+    "de": "hallo",        # 121
+    "fr": "bonjour",      # 121
+    "es": "hola",         # 96
+    "pl": "cześć",       # cześć, 40
+    "cs": "ahoj",         # 37
+    "pt": "olá",          # olá, 24
+    "ru": "привет",       # привет, 21
+    "sv-SE": "hej",       # 21
+    "it": "ciao",         # 18
+    "nl": "hallo",        # 15
+    "ca": "hola",         # 14
+    "ro": "salut",        # 10
+    "id": "halo",         # 7
+    "el": "γεια",         # γεια, 6
+    "uk": "вітаю",        # вітаю, 6 (привіт: 0 clips)
 }

@@ -49,7 +49,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.ckpt:
-        ck = torch.load(args.ckpt, map_location="cpu")
+        ck = torch.load(args.ckpt, map_location="cpu", weights_only=True)
         cfg = O1SoundConfig(**ck["config"])
         model = O1Sound(cfg)
         model.load_state_dict(ck["model"])

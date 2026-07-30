@@ -22,6 +22,9 @@ from pathlib import Path
 BASE = "https://storage.googleapis.com/public-datasets-mswc/audio"
 
 
+SPLITS_BASE = "https://storage.googleapis.com/public-datasets-mswc/splits"
+
+
 def fetch(lang: str, out: Path, force: bool) -> bool:
     dest = out / lang
     if dest.exists() and not force:
@@ -41,6 +44,24 @@ def fetch(lang: str, out: Path, force: bool) -> bool:
     with tarfile.open(tmp) as tf:
         tf.extractall(out, filter="data")
     tmp.unlink(missing_ok=True)
+
+    # The audio archive contains ONLY clips/ -- the split assignments ship as a
+    # separate small archive (~hundreds of KB). Without it the loader falls
+    # back to "everything is train" and dev/test are silently empty.
+    stmp = out / f"{lang}_splits.tar.gz"
+    try:
+        urllib.request.urlretrieve(f"{SPLITS_BASE}/{lang}.tar.gz", stmp)
+        with tarfile.open(stmp) as tf:
+            for m in tf.getmembers():
+                if m.name.endswith("_splits.csv"):
+                    m.name = Path(m.name).name
+                    tf.extract(m, dest, filter="data")
+        print(f"  {lang}: splits csv installed")
+    except Exception as exc:
+        print(f"  {lang}: WARNING no splits archive ({exc}) -- loader will "
+              f"treat every clip as train and dev/test will be empty")
+    finally:
+        stmp.unlink(missing_ok=True)
     return True
 
 
