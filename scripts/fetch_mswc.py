@@ -41,8 +41,28 @@ def fetch(lang: str, out: Path, force: bool) -> bool:
               f"not every locale uses a bare two-letter code (e.g. sv-SE).")
         return False
     print(f"  {lang}: extracting")
+    # Windows reserves device names (nul, con, prn, aux, com1-9, lpt1-9) at
+    # EVERY path depth, and MSWC word folders are real words -- Dutch has a
+    # word directory literally named "nul" (zero), which kills extractall
+    # partway through on Windows. Skip such members with a tally: losing one
+    # negative word is harmless, dying mid-archive is not.
+    reserved = ({"nul", "con", "prn", "aux"}
+                | {f"com{i}" for i in range(1, 10)}
+                | {f"lpt{i}" for i in range(1, 10)})
+    skipped_reserved = 0
     with tarfile.open(tmp) as tf:
-        tf.extractall(out, filter="data")
+        members = []
+        for m in tf.getmembers():
+            parts = [p.split(".")[0].lower()
+                     for p in m.name.replace("\\", "/").split("/")]
+            if any(p in reserved for p in parts):
+                skipped_reserved += 1
+                continue
+            members.append(m)
+        tf.extractall(out, members=members, filter="data")
+    if skipped_reserved:
+        print(f"  {lang}: skipped {skipped_reserved} member(s) under "
+              f"Windows-reserved names")
     tmp.unlink(missing_ok=True)
 
     # The audio archive contains ONLY clips/ -- the split assignments ship as a
