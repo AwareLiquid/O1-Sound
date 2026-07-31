@@ -37,14 +37,21 @@ from o1sound.keywords import GREETINGS
 
 
 def collect_scores(model, frontend, loader, device):
-    """Wake-word probability plus label and language for every clip."""
+    """Wake probability plus binary label and language for every clip.
+
+    In multi-class mode the wake score is the total probability mass on the
+    greeting classes (1..N), i.e. the OR the device actually acts on -- not the
+    probability of naming the right language. Labels collapse to binary for the
+    same reason.
+    """
     model.eval()
     scores, labels, langs = [], [], []
     with torch.no_grad():
         for wav, label, lang in loader:
-            p = torch.softmax(model(frontend(wav.to(device))), dim=1)[:, 1]
+            probs = torch.softmax(model(frontend(wav.to(device))), dim=1)
+            p = probs[:, 1:].sum(dim=1) if probs.shape[1] > 2 else probs[:, 1]
             scores.append(p.cpu())
-            labels.append(label)
+            labels.append((label > 0).long())
             langs.extend(lang)
     return torch.cat(scores), torch.cat(labels), langs
 
@@ -80,7 +87,15 @@ def main() -> int:
     model.load_state_dict(ck["model"])
     frontend = LogMel().to(device)
 
-    ds = MSWCWakeWord(args.root, KeywordSpec(GREETINGS), args.split)
+    # Rebuild the dataset the way the checkpoint was trained: n_classes > 2
+    # means the greeting labels must be restored, or every positive collapses
+    # to class 1 and the per-language table becomes meaningless.
+    multiclass = int(ck["config"].get("n_classes", 2)) > 2
+    ds = MSWCWakeWord(args.root, KeywordSpec(GREETINGS), args.split,
+                      multiclass=multiclass)
+    if multiclass:
+        print(f"multi-class checkpoint: {ck['config']['n_classes']} classes, "
+              f"wake score = sum over greeting classes")
     dl = DataLoader(ds, args.batch, shuffle=False, collate_fn=collate)
     scores, labels, langs = collect_scores(model, frontend, dl, device)
 

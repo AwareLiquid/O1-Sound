@@ -33,6 +33,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from o1sound import LogMel, O1Sound, O1SoundConfig
 from o1sound.data import KeywordSpec, MSWCWakeWord, collate
+from o1sound.data.augment import WaveformAugment, spec_augment
 from o1sound.keywords import GREETINGS
 
 
@@ -48,14 +49,19 @@ def evaluate(model, frontend, loader, device):
             pred = logits.argmax(dim=1)
             correct += (pred == label).sum().item()
             total += label.numel()
+            # The deployed decision is "did a greeting occur", so in multi-class
+            # mode FRR/FAR are measured on the OR over classes 1..N, not on
+            # whether the right language was identified.
+            wake_true = (label > 0)
+            wake_pred = (pred > 0)
             for i, lg in enumerate(langs):
                 fr, fa, npos, nneg = per_lang.setdefault(lg, [0, 0, 0, 0])
-                if label[i] == 1:
+                if wake_true[i]:
                     npos += 1
-                    fr += int(pred[i].item() == 0)
+                    fr += int(not wake_pred[i])
                 else:
                     nneg += 1
-                    fa += int(pred[i].item() == 1)
+                    fa += int(wake_pred[i])
                 per_lang[lg] = [fr, fa, npos, nneg]
     rates = {
         lg: {
@@ -82,14 +88,32 @@ def main() -> int:
     ap.add_argument("--window", type=float, default=1.0)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--multiclass", action="store_true",
+                    help="one class per greeting plus 'other'; the wake decision "
+                         "is an OR over the greeting classes. Run 1 showed a "
+                         "single binary class cannot span phonetically unrelated "
+                         "greetings")
+    ap.add_argument("--pooling", choices=["mean", "max", "attn"], default="mean")
+    ap.add_argument("--augment", action="store_true",
+                    help="waveform augmentation on the TRAIN split only")
+    ap.add_argument("--spec-augment", action="store_true",
+                    help="frequency/time masking on the mel batch")
+    ap.add_argument("--confusable-frac", type=float, default=0.0,
+                    help="fraction of the negative budget reserved for words "
+                         "closest to the wake word by edit distance")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     device = torch.device(args.device)
-    spec = KeywordSpec(GREETINGS, negatives_per_language=args.negatives)
+    spec = KeywordSpec(GREETINGS, negatives_per_language=args.negatives,
+                       confusable_frac=args.confusable_frac)
 
-    train_ds = MSWCWakeWord(args.root, spec, "train", args.window, seed=args.seed)
-    dev_ds = MSWCWakeWord(args.root, spec, "dev", args.window, seed=args.seed + 1)
+    aug = WaveformAugment(seed=args.seed) if args.augment else None
+    train_ds = MSWCWakeWord(args.root, spec, "train", args.window, seed=args.seed,
+                            multiclass=args.multiclass, augment=aug)
+    # dev and test never see augmentation -- that would measure the augmentation.
+    dev_ds = MSWCWakeWord(args.root, spec, "dev", args.window, seed=args.seed + 1,
+                          multiclass=args.multiclass)
     pos, neg = train_ds.label_balance()
     print(f"train {len(train_ds)} clips ({pos} wake / {neg} negative) "
           f"over {len(train_ds.languages())} languages; dev {len(dev_ds)}")
@@ -106,15 +130,35 @@ def main() -> int:
     train_dl = DataLoader(train_ds, args.batch, shuffle=True, collate_fn=collate, drop_last=True)
     dev_dl = DataLoader(dev_ds, args.batch, shuffle=False, collate_fn=collate)
 
+    if train_ds.confusables:
+        for lg, words in train_ds.confusables.items():
+            print(f"  {lg} confusable negatives: {', '.join(words[:8])}")
+
     frontend = LogMel().to(device)
-    model = O1Sound(O1SoundConfig(hidden=args.hidden, n_layers=args.layers, n_classes=2)).to(device)
+    n_classes = train_ds.n_classes
+    model = O1Sound(O1SoundConfig(hidden=args.hidden, n_layers=args.layers,
+                                  n_classes=n_classes, pooling=args.pooling)).to(device)
+    print(f"head: {n_classes} classes, pooling={args.pooling}, "
+          f"augment={'on' if aug else 'off'}, spec_augment={'on' if args.spec_augment else 'off'}")
     n_params = model.num_parameters()
     print(f"model {n_params:,} params = {n_params * 4 / 1e6:.2f} MB fp32, "
           f"carried state {model.state_bytes()} B/stream")
 
     # Negatives outnumber positives heavily; weight the loss so the model cannot
     # win by never firing.
-    weight = torch.tensor([1.0, max(1.0, neg / max(pos, 1))], device=device)
+    if n_classes == 2:
+        weight = torch.tensor([1.0, max(1.0, neg / max(pos, 1))], device=device)
+    else:
+        # Per-class inverse frequency: the greeting classes are individually
+        # tiny (4-28 clips for the tail languages) and would otherwise be
+        # drowned by "other".
+        counts = [0] * n_classes
+        for e in train_ds.examples:
+            counts[e.label] += 1
+        total_n = sum(counts)
+        weight = torch.tensor(
+            [total_n / (n_classes * c) if c else 1.0 for c in counts],
+            device=device, dtype=torch.float32)
     crit = nn.CrossEntropyLoss(weight=weight)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
@@ -126,7 +170,10 @@ def main() -> int:
         t0, tot, nb = time.time(), 0.0, 0
         for wav, label, _ in train_dl:
             wav, label = wav.to(device), label.to(device)
-            loss = crit(model(frontend(wav)), label)
+            mel = frontend(wav)
+            if args.spec_augment:
+                mel = spec_augment(mel)
+            loss = crit(model(mel), label)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -145,6 +192,7 @@ def main() -> int:
             torch.save(
                 {"model": model.state_dict(),
                  "config": vars(model.config),
+                 "class_names": train_ds.class_names,
                  "dev_acc": acc,
                  "per_language": rates,
                  "languages": train_ds.languages()},

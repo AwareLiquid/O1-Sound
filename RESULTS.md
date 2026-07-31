@@ -116,8 +116,18 @@ AdamW lr 3e-3 cosine, class-weighted CE, CPU. MSWC English, fetched with
 Test split, at the operating point meeting a 5% false-accept budget:
 
 ```
-threshold 0.78    FAR 0.0455    FRR 0.2439
+threshold 0.82    FAR 0.0455    FRR 0.1463
 ```
+
+> **Correction (same day).** This was first published as *FRR 0.2439 at
+> threshold 0.78*. That figure is wrong: it was measured while the English
+> archive was **still downloading**, so the test split was incomplete. On the
+> finished data the point it names does not exist — at threshold 0.78 the true
+> FAR is 0.0519, which fails the 5% budget. Re-running the pre-refactor code on
+> the complete data reproduces **0.1463** exactly, confirming the refactor did
+> not move the number and the original run was the faulty one. The lesson is
+> procedural, not numerical: never evaluate against a directory another process
+> is still writing.
 
 Best dev accuracy 0.9194 against a 0.7796 never-fire baseline — the first
 configuration in this repository that beats "always say no".
@@ -127,7 +137,7 @@ Against Run 1 at the same false-accept budget:
 | run | positives | FRR @ FAR≈5% | vs never-fire |
 |---|---:|---:|---|
 | Run 1 — 9 languages | 91 | 0.909 | worse (0.846 vs 0.984) |
-| **Run 2 — English only** | **301** | **0.244** | **better (0.919 vs 0.780)** |
+| **Run 2 — English only** | **301** | **0.146** | **better (0.919 vs 0.780)** |
 
 **Miss rate falls to roughly one third.** Two variables moved — 3.3× the
 positives and a single acoustic target — and this run does not separate them.
@@ -137,12 +147,12 @@ not the blocker.
 ### What this is NOT
 
 - **Not production quality.** Deployed wake words run FRR in the low single
-  digits at a false-accept rate quoted per hour of audio, not per clip. 24%
+  digits at a false-accept rate quoted per hour of audio, not per clip. 15%
   missed activations is a bad user experience.
 - **Not a multilingual result.** It is one word in one language. The
   multilingual claim remains unsupported, and Run 1 is evidence against it at
   this data scale.
-- **Dev flatters it.** Dev FRR was 0.073 against test 0.244 on 41 positives
+- **Dev flatters it.** Dev FRR was 0.073 against test 0.146 on 41 positives
   each. With samples this small the gap is partly threshold selection on dev,
   and the honest number is the test one.
 

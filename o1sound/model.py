@@ -37,6 +37,12 @@ class O1SoundConfig:
     hidden: int = 192
     n_layers: int = 2
     n_classes: int = 2          # overwritten by the training script
+    # Mean pooling dilutes a keyword that occupies a fraction of the window:
+    # ~30 frames of "hello" averaged against ~70 frames of silence pulls the
+    # evidence toward the background. "max" takes the strongest moment, "attn"
+    # learns where to look. Default stays "mean" so existing checkpoints load
+    # bit-identically.
+    pooling: str = "mean"       # "mean" | "max" | "attn"
     tau_min: float = 1.0
     tau_max: float = 24.0       # frames; at 10 ms hop this is 10-240 ms
     dropout: float = 0.1
@@ -46,6 +52,8 @@ class O1SoundConfig:
             raise ValueError("hidden and n_layers must be positive")
         if not 0.0 < self.tau_min < self.tau_max:
             raise ValueError("require 0 < tau_min < tau_max")
+        if self.pooling not in ("mean", "max", "attn"):
+            raise ValueError(f"pooling must be mean|max|attn; got {self.pooling!r}")
 
 
 class LiquidCell(nn.Module):
@@ -105,17 +113,26 @@ class O1Sound(nn.Module):
         )
         self.drop = nn.Dropout(config.dropout)
         self.head = nn.Linear(config.hidden, config.n_classes)
+        # Attention pooling is a single learned scorer over time; created only
+        # when selected so the "mean" parameter set stays byte-identical.
+        self.pool_score = (nn.Linear(config.hidden, 1)
+                           if config.pooling == "attn" else None)
+
+    def pool(self, h: torch.Tensor) -> torch.Tensor:
+        """(B, T, hidden) -> (B, hidden). All modes are position-invariant."""
+        if self.config.pooling == "max":
+            return h.max(dim=1).values
+        if self.config.pooling == "attn":
+            w = torch.softmax(self.pool_score(h), dim=1)   # (B, T, 1)
+            return (h * w).sum(dim=1)
+        return h.mean(dim=1)
 
     def forward(self, mel: torch.Tensor) -> torch.Tensor:
-        """mel: (B, T, n_mels) -> logits (B, n_classes).
-
-        Pools over time by mean, which keeps the decision insensitive to where
-        in the window the keyword lands.
-        """
+        """mel: (B, T, n_mels) -> logits (B, n_classes)."""
         h = self.norm(mel)
         for cell in self.cells:
             h = cell(h)
-        return self.head(self.drop(h.mean(dim=1)))
+        return self.head(self.drop(self.pool(h)))
 
     # ---- streaming -------------------------------------------------------
 

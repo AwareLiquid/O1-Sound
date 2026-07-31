@@ -28,7 +28,7 @@ This section comes first on purpose.
   could drift.
 
 **Measured — the architecture works, the multilingual framing does not (yet)**
-- **Run 2** (2026-08-01, English only, 301 wake clips): **FRR 0.244 at FAR
+- **Run 2** (2026-08-01, English only, 301 wake clips): **FRR 0.146 at FAR
   0.046** on held-out test. Best dev accuracy 0.919 against a 0.780 never-fire
   baseline — the first configuration here that beats "always say no".
 - **Run 1** (2026-07-31, 9 languages, 91 wake clips): **FRR 0.909 at FAR

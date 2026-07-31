@@ -84,6 +84,21 @@ def fit_length(x: np.ndarray, n: int, rng: random.Random | None = None) -> np.nd
     return np.pad(x, (left, pad - left))
 
 
+def _edit_distance(a: str, b: str) -> int:
+    """Levenshtein on the written form -- a cheap stand-in for phonetic
+    similarity that needs no pronunciation dictionary and works in every
+    script MSWC ships."""
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
 @dataclass
 class KeywordSpec:
     """Which word counts as the wake word, per language.
@@ -96,6 +111,12 @@ class KeywordSpec:
 
     positives: dict[str, str]
     negatives_per_language: int = 400
+    # Uniformly-sampled negatives never test the boundary where it matters: a
+    # detector only has to beat "hello" against "seven" to look fine, and then
+    # fires on "hollow" in the field. Reserve this fraction of the negative
+    # budget for the words closest to the wake word by edit distance.
+    confusable_frac: float = 0.0
+    confusable_max_distance: int = 3
     field_names: list[str] = field(default_factory=lambda: ["LINK", "WORD", "SPLIT"])
 
 
@@ -123,6 +144,8 @@ class MSWCWakeWord(Dataset):
         window_s: float = 1.0,
         sample_rate: int = TARGET_SR,
         seed: int = 0,
+        multiclass: bool = False,
+        augment=None,
     ) -> None:
         self.root = Path(root)
         self.spec = spec
@@ -132,6 +155,20 @@ class MSWCWakeWord(Dataset):
         self.rng = random.Random(seed)
         self.skipped: dict[str, int] = {}
         self.missing_wake: dict[str, str] = {}
+        # Multi-class mode gives every greeting its own class and lumps all
+        # non-greetings into class 0. Run 1 showed why binary fails: one class
+        # spanning hello, cześć, γεια and سلام has more variance inside it than
+        # between it and the negatives, so there is no coherent target to learn.
+        # The wake decision at inference is an OR over classes 1..N.
+        self.multiclass = multiclass
+        self.augment = augment
+        self.confusables: dict[str, list[str]] = {}
+        self.class_names: list[str] = ["_other_"]
+        self.lang_to_class: dict[str, int] = {}
+        if multiclass:
+            for lang in spec.positives:
+                self.lang_to_class[lang] = len(self.class_names)
+                self.class_names.append(f"{lang}:{spec.positives[lang]}")
 
         if not self.root.exists():
             raise FileNotFoundError(
@@ -177,8 +214,9 @@ class MSWCWakeWord(Dataset):
 
         out: list[Example] = []
         pos_dir = clips / wake_word
+        wake_label = self.lang_to_class.get(lang, 1) if self.multiclass else 1
         if pos_dir.exists():
-            out += [Example(p, 1, lang) for p in sorted(pos_dir.iterdir()) if keep(p)]
+            out += [Example(p, wake_label, lang) for p in sorted(pos_dir.iterdir()) if keep(p)]
         else:
             # The language is on disk but its wake folder is not -- a partial
             # extract, or a keyword string that does not match MSWC's native
@@ -187,13 +225,33 @@ class MSWCWakeWord(Dataset):
             # is exactly the failure that must not pass unnoticed.
             self.missing_wake[lang] = wake_word
 
-        neg_pool: list[Path] = []
-        for word_dir in sorted(clips.iterdir()):
-            if not word_dir.is_dir() or word_dir.name == wake_word:
-                continue
-            neg_pool += [p for p in sorted(word_dir.iterdir()) if keep(p)]
-        self.rng.shuffle(neg_pool)
-        out += [Example(p, 0, lang) for p in neg_pool[: self.spec.negatives_per_language]]
+        word_dirs = [d for d in sorted(clips.iterdir())
+                     if d.is_dir() and d.name != wake_word]
+        budget = self.spec.negatives_per_language
+        n_conf = int(budget * self.spec.confusable_frac)
+        chosen: list[Path] = []
+
+        if n_conf > 0:
+            scored = sorted(
+                ((_edit_distance(d.name, wake_word), d) for d in word_dirs),
+                key=lambda kv: kv[0],
+            )
+            near = [d for dist, d in scored if dist <= self.spec.confusable_max_distance]
+            self.confusables[lang] = [d.name for d in near[:12]]
+            pool: list[Path] = []
+            for d in near:
+                pool += [p for p in sorted(d.iterdir()) if keep(p)]
+            self.rng.shuffle(pool)
+            chosen += pool[:n_conf]
+
+        rest: list[Path] = []
+        for d in word_dirs:
+            rest += [p for p in sorted(d.iterdir()) if keep(p)]
+        self.rng.shuffle(rest)
+        seen = set(chosen)
+        chosen += [p for p in rest if p not in seen][: budget - len(chosen)]
+
+        out += [Example(p, 0, lang) for p in chosen]
         return out
 
     def __len__(self) -> int:
@@ -209,11 +267,18 @@ class MSWCWakeWord(Dataset):
         audio = _resample_linear(audio, sr, self.sample_rate)
         rng = self.rng if self.split == "train" else None
         audio = fit_length(audio, self.n_samples, rng)
+        if self.augment is not None:
+            audio = self.augment(audio)
         return torch.from_numpy(np.ascontiguousarray(audio)), ex.label, ex.language
 
     def label_balance(self) -> tuple[int, int]:
-        pos = sum(1 for e in self.examples if e.label == 1)
+        """(wake, non-wake). In multi-class mode any class > 0 is a wake word."""
+        pos = sum(1 for e in self.examples if e.label > 0)
         return pos, len(self.examples) - pos
+
+    @property
+    def n_classes(self) -> int:
+        return len(self.class_names) if self.multiclass else 2
 
     def languages(self) -> list[str]:
         return sorted({e.language for e in self.examples})
