@@ -18,6 +18,19 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
+import sys
+
+# MSWC keywords are native script by design (cześć, привет, سلام), and this
+# script prints them. A Windows console defaults to a legacy codepage (GBK,
+# CP1252) that cannot encode them, so an ordinary progress line would raise
+# UnicodeEncodeError and kill a training run mid-flight. Degrade the glyph,
+# never the run.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 from o1sound import LogMel, O1Sound, O1SoundConfig
 from o1sound.data import KeywordSpec, MSWCWakeWord, collate
 from o1sound.keywords import GREETINGS
