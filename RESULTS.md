@@ -86,3 +86,86 @@ reserved device names, silent missing-wake languages, a console-encoding crash,
 and a missing output directory. Those are fixed and pinned.
 
 Artefacts: `results/real_v1.json`.
+
+---
+
+## Run 2 — 2026-08-01 — English only, the narrow test
+
+**Verdict: the architecture learns a wake word. Run 1's failure was the task
+definition, not the model.**
+
+Run 1 left one question that had to be answered before spending anything more:
+can a 1.3 M-parameter liquid core learn ONE keyword at all? Same code, same
+config, same hardware — only the label set changed, from "a greeting in any of
+9 languages" to "the English word hello".
+
+### Setup
+
+Identical to Run 1 except the data: `hidden=640, layers=2`, 30 epochs, batch 64,
+AdamW lr 3e-3 cosine, class-weighted CE, CPU. MSWC English, fetched with
+`--stream` (301 wake clips landed in ~3 GB instead of the archive's 35 GB).
+
+| split | clips | wake | negative | never-fire baseline |
+|---|---:|---:|---:|---:|
+| train | 1,418 | 219 | 1,199 | 0.8456 |
+| dev | 186 | 41 | 145 | 0.7796 |
+| test | 195 | 41 | 154 | 0.7897 |
+
+### Result
+
+Test split, at the operating point meeting a 5% false-accept budget:
+
+```
+threshold 0.78    FAR 0.0455    FRR 0.2439
+```
+
+Best dev accuracy 0.9194 against a 0.7796 never-fire baseline — the first
+configuration in this repository that beats "always say no".
+
+Against Run 1 at the same false-accept budget:
+
+| run | positives | FRR @ FAR≈5% | vs never-fire |
+|---|---:|---:|---|
+| Run 1 — 9 languages | 91 | 0.909 | worse (0.846 vs 0.984) |
+| **Run 2 — English only** | **301** | **0.244** | **better (0.919 vs 0.780)** |
+
+**Miss rate falls to roughly one third.** Two variables moved — 3.3× the
+positives and a single acoustic target — and this run does not separate them.
+What it does settle is the question it was built to answer: the architecture is
+not the blocker.
+
+### What this is NOT
+
+- **Not production quality.** Deployed wake words run FRR in the low single
+  digits at a false-accept rate quoted per hour of audio, not per clip. 24%
+  missed activations is a bad user experience.
+- **Not a multilingual result.** It is one word in one language. The
+  multilingual claim remains unsupported, and Run 1 is evidence against it at
+  this data scale.
+- **Dev flatters it.** Dev FRR was 0.073 against test 0.244 on 41 positives
+  each. With samples this small the gap is partly threshold selection on dev,
+  and the honest number is the test one.
+
+### Next
+
+The label set is the lever. Run 1 asked one binary class to span `hello ∪ cześć
+∪ γεια ∪ سلام ∪ вітаю` — phrases sharing no phonetic structure, so within-class
+variance exceeded between-class variance. Run 2 removed that and the model
+worked. The fix is therefore not "more languages into the same class":
+
+1. **Multi-class head, OR at inference.** 17 greeting classes plus "other";
+   the wake signal is an OR over the greeting logits. Each class stays
+   acoustically coherent, per-language diagnosis becomes possible, and the cost
+   is ~10 K parameters — the 5.03 MB budget is unaffected.
+2. **Augmentation.** No augmentation exists yet; class weighting only tells the
+   loss to care more about the same recordings. Time shift, noise at varied
+   SNR, speed perturbation and SpecAugment are standard for exactly this
+   small-positive regime.
+3. **Confusable negatives.** Negatives are sampled uniformly at random.
+   Wake-word training needs near-misses (hello vs hollow, yellow, hell) or the
+   decision boundary is never tested where it matters.
+4. **Pooling.** `forward()` mean-pools over time, diluting a keyword that
+   occupies a fraction of the window. Max or attention pooling suits both the
+   task and the multi-timescale core better.
+
+Artefacts: `results/narrow_en.json`, `ck/narrow_en.metrics.json`.
