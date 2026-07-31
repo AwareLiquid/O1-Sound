@@ -78,6 +78,12 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--target-far", type=float, default=0.01)
     ap.add_argument("--out", default="")
+    ap.add_argument("--confusable-frac", type=float, default=0.0,
+                    help="fraction of eval negatives drawn from words nearest the "
+                         "wake word by edit distance. A model trained on hard "
+                         "negatives and scored on uniform ones is measured on a "
+                         "distribution shift, not on its quality — match this to "
+                         "training, or report both")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -91,8 +97,11 @@ def main() -> int:
     # means the greeting labels must be restored, or every positive collapses
     # to class 1 and the per-language table becomes meaningless.
     multiclass = int(ck["config"].get("n_classes", 2)) > 2
-    ds = MSWCWakeWord(args.root, KeywordSpec(GREETINGS), args.split,
-                      multiclass=multiclass)
+    ds = MSWCWakeWord(args.root,
+                      KeywordSpec(GREETINGS, confusable_frac=args.confusable_frac),
+                      args.split, multiclass=multiclass)
+    if args.confusable_frac > 0:
+        print(f"eval negatives: {args.confusable_frac:.0%} confusable")
     if multiclass:
         print(f"multi-class checkpoint: {ck['config']['n_classes']} classes, "
               f"wake score = sum over greeting classes")
