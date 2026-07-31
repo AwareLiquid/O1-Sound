@@ -179,3 +179,68 @@ worked. The fix is therefore not "more languages into the same class":
    task and the multi-timescale core better.
 
 Artefacts: `results/narrow_en.json`, `ck/narrow_en.metrics.json`.
+
+---
+
+## Run 3 — 2026-08-01 — the four fixes, and why this test set cannot judge them
+
+**Verdict: the fixes are implemented and behave as designed. This experiment
+cannot tell whether they help. The blocker is now measurement, not modelling.**
+
+Same data as run 2 (English, 301 wake clips), plus all four changes run 2
+prescribed: waveform augmentation, SpecAugment, 35% confusable negatives, and
+attention pooling.
+
+| | run 2 | run 3 |
+|---|---:|---:|
+| final train loss | ~0.48 | **0.31** |
+| dev FRR | 0.049 | 0.049 |
+| dev FAR | 0.034 | 0.110 |
+| **test FRR @ FAR 0.046** | **0.146** | **0.220** |
+
+Test FRR went *up*. Before reading anything into that:
+
+```
+run 2:  6/41 missed   FRR 0.146   95% CI [0.038, 0.254]
+run 3:  9/41 missed   FRR 0.220   95% CI [0.093, 0.346]
+difference: 3 clips.  two-proportion z = 0.86 — not significant at 95%
+```
+
+**The whole difference is three clips out of forty-one.** One clip moves FRR by
+0.024. The intervals overlap across most of their range, dev FRR is identical
+at 0.049, and a 5-point FRR change is simply not resolvable at n=41. Neither
+run is evidence for or against the fixes.
+
+Two real observations survive the noise:
+
+- **Train loss fell from ~0.48 to 0.31.** Augmentation is doing what
+  augmentation does — the model has more to fit and fits it. That is an
+  optimisation fact, independent of the test-set problem.
+- **Dev FAR rose 0.034 → 0.110.** Expected and worth naming: run 3 trains
+  against confusable negatives (hell, cell, alloy, apollo) but is *evaluated*
+  against uniformly-sampled ones. A boundary tuned on near-misses is
+  necessarily looser on easy negatives. Hard-negative training and easy-negative
+  evaluation is a mismatch, and the evaluation set is the side that is wrong.
+
+### Fixed here
+
+Checkpoint selection used **dev accuracy**, which with negatives outnumbering
+positives ~6:1 rewards a model drifting toward never firing. Both earlier runs
+therefore saved on a criterion partly anti-correlated with the job. Selection is
+now **balanced accuracy** over the wake decision — the mean of the per-class
+rates, which a never-fire model cannot win.
+
+### Next — fix the measurement first
+
+1. **Enlarge the test set before running more configurations.** Persian has 562
+   wake clips against English's 301; streaming it costs ~100 MB on disk. en+fa
+   roughly triples the positives and makes a 5-point difference resolvable.
+2. **Multiple seeds.** One run per configuration cannot separate a real effect
+   from initialisation. Three seeds minimum before any config is called better.
+3. **Evaluate against the negatives that were trained against.** Either put
+   confusables in the eval set too, or report both — the current pairing
+   measures a distribution shift as if it were model quality.
+4. Only then is `--multiclass` worth running: the multilingual question is the
+   expensive one, and it deserves an instrument that can read the answer.
+
+Artefacts: `results/narrow_v3.json`, `ck/narrow_v3.metrics.json`.

@@ -185,23 +185,38 @@ def main() -> int:
             ((lg, r["frr"]) for lg, r in rates.items() if r["frr"] is not None),
             key=lambda kv: kv[1], default=("-", 0.0),
         )
+        # Accuracy is the wrong thing to checkpoint on when negatives outnumber
+        # positives ~6:1 -- a model drifting toward never firing scores well on
+        # it while getting worse at the only job it has. Select on balanced
+        # accuracy over the wake/not-wake decision: the mean of the per-class
+        # rates, which a never-fire model cannot win.
+        tp = sum(r["n_pos"] - round(r["frr"] * r["n_pos"])
+                 for r in rates.values() if r["frr"] is not None)
+        npos = sum(r["n_pos"] for r in rates.values() if r["frr"] is not None)
+        tn = sum(r["n_neg"] - round(r["far"] * r["n_neg"])
+                 for r in rates.values() if r["far"] is not None)
+        nneg = sum(r["n_neg"] for r in rates.values() if r["far"] is not None)
+        bal = 0.5 * ((tp / npos if npos else 0.0) + (tn / nneg if nneg else 0.0))
         print(f"epoch {ep:>3}  loss {tot / max(nb,1):.4f}  dev acc {acc:.4f}  "
-              f"worst-language FRR {worst[1]:.3f} ({worst[0]})  {time.time() - t0:.0f}s")
-        if acc > best:
-            best = acc
+              f"bal {bal:.4f}  worst-language FRR {worst[1]:.3f} ({worst[0]})  "
+              f"{time.time() - t0:.0f}s")
+        if bal > best:
+            best = bal
             torch.save(
                 {"model": model.state_dict(),
                  "config": vars(model.config),
                  "class_names": train_ds.class_names,
                  "dev_acc": acc,
+                 "dev_balanced_acc": bal,
                  "per_language": rates,
                  "languages": train_ds.languages()},
                 args.out,
             )
             Path(args.out).with_suffix(".metrics.json").write_text(
-                json.dumps({"dev_acc": acc, "per_language": rates}, indent=2), encoding="utf-8"
+                json.dumps({"dev_acc": acc, "dev_balanced_acc": bal,
+                            "per_language": rates}, indent=2), encoding="utf-8"
             )
-    print(f"best dev acc {best:.4f} -> {args.out}")
+    print(f"best dev balanced acc {best:.4f} -> {args.out}")
     return 0
 
 
