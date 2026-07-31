@@ -84,6 +84,11 @@ def main() -> int:
     if missing:
         print(f"WARNING: {len(missing)} language(s) in the spec are not on disk: "
               f"{', '.join(missing)} — the multilingual claim covers only what trained.")
+    if train_ds.missing_wake:
+        detail = ", ".join(f"{lg}({w})" for lg, w in train_ds.missing_wake.items())
+        print(f"WARNING: {len(train_ds.missing_wake)} language(s) present but with NO "
+              f"wake-word folder: {detail}. They contribute negatives only — check for a "
+              f"partial extract or a keyword that does not match MSWC's native spelling.")
 
     train_dl = DataLoader(train_ds, args.batch, shuffle=True, collate_fn=collate, drop_last=True)
     dev_dl = DataLoader(dev_ds, args.batch, shuffle=False, collate_fn=collate)

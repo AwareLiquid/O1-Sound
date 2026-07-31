@@ -131,6 +131,7 @@ class MSWCWakeWord(Dataset):
         self.n_samples = int(window_s * sample_rate)
         self.rng = random.Random(seed)
         self.skipped: dict[str, int] = {}
+        self.missing_wake: dict[str, str] = {}
 
         if not self.root.exists():
             raise FileNotFoundError(
@@ -178,6 +179,13 @@ class MSWCWakeWord(Dataset):
         pos_dir = clips / wake_word
         if pos_dir.exists():
             out += [Example(p, 1, lang) for p in sorted(pos_dir.iterdir()) if keep(p)]
+        else:
+            # The language is on disk but its wake folder is not -- a partial
+            # extract, or a keyword string that does not match MSWC's native
+            # spelling. Either way the language would silently contribute
+            # negatives only and quietly vanish from the positive set, which
+            # is exactly the failure that must not pass unnoticed.
+            self.missing_wake[lang] = wake_word
 
         neg_pool: list[Path] = []
         for word_dir in sorted(clips.iterdir()):
