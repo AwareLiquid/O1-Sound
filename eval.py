@@ -114,6 +114,7 @@ def main() -> int:
           f"multilingual claim, not the mean.")
 
     if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(
             json.dumps({"threshold": thr, "far": far, "frr": frr,
                         "per_language": per_lang, "split": args.split}, indent=2),

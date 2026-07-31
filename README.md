@@ -27,9 +27,21 @@ This section comes first on purpose.
   is a property of the recurrence, verified by test, not a measurement that
   could drift.
 
-**NOT validated — there is no trained model in this repository**
-- **No weights ship here.** No checkpoint has been trained yet, so there is
-  **no accuracy, no false-reject rate, and no false-accept rate to report.**
+**Measured and NEGATIVE — the first real training run failed**
+- Run 1 (2026-07-31, 9 languages, 91 wake clips): **FRR 0.909 at FAR 0.049**,
+  and the model **never fires at all for six of the nine languages**. Best dev
+  accuracy 0.846 against a **0.984 baseline for never firing** — predicting "no
+  wake word" unconditionally scores better than what trained. Full numbers and
+  the reasoning about why in [RESULTS.md](RESULTS.md). **Do not cite a
+  detection number from this repository yet.**
+- Beyond sample count, the framing itself is under review: "a greeting in any
+  language" asks one binary class to cover phrases that share no phonetic
+  structure, which is a 17-way OR rather than a wake word. Next step is
+  deliberately narrow — train English alone and see whether 301 clips teach a
+  1.3 M-parameter model one keyword at all.
+
+**NOT validated — there is no shippable model in this repository**
+- **No usable weights ship here.**
   `export_onnx.py` without `--ckpt` exports an *untrained* graph: the size is
   real, the behaviour is noise. It says so when you run it.
 - The greeting list in `o1sound/keywords.py` covers 20 languages, but a language
