@@ -244,3 +244,69 @@ rates, which a never-fire model cannot win.
    expensive one, and it deserves an instrument that can read the answer.
 
 Artefacts: `results/narrow_v3.json`, `ck/narrow_v3.metrics.json`.
+
+---
+
+## Run 4 — 2026-08-01 — en+fa, 3 seeds x 2 configs
+
+**Verdict: the four fixes do not help. And seed variance alone is larger than
+the difference between configurations, which retroactively invalidates runs 2
+and 3 as comparisons.**
+
+The instrument problem from run 3 was fixed first: Persian adds 562 wake clips
+to English's 301 (streamed for 236 MB against a 6.8 GB archive), taking the
+test split from 41 positives to 101. Then three seeds per configuration, 20
+epochs each, everything else identical.
+
+| config | FRR mean | sd | per-seed |
+|---|---:|---:|---|
+| baseline | **0.139** | 0.052 | 0.198, 0.119, 0.099 |
+| + augment, SpecAugment, 35% confusables, attn pooling | **0.205** | 0.040 | 0.198, 0.247, 0.168 |
+
+```
+difference = +0.066 FRR (worse)
+t(4) = 1.73 — not significant at 95%
+```
+
+The number that matters more than either mean:
+
+```
+seed-to-seed spread WITHIN the baseline:  0.099 FRR  (0.099 -> 0.198, ten clips)
+difference BETWEEN the configurations:    0.066 FRR
+```
+
+**Initialisation moves the metric 1.5x more than the entire intervention
+does.** Runs 2 and 3 were one seed each; the 0.146 vs 0.220 gap reported there
+sits comfortably inside this noise band. Neither of those comparisons carried
+information, and this run supersedes both.
+
+Dev balanced accuracy was flat across all six runs (0.920-0.936), so the models
+are of similar quality and most of the test-FRR spread is threshold selection on
+101 positives, not a difference in what was learned.
+
+### Two reasons the fixes may genuinely hurt, beyond noise
+
+Worth stating because they are mechanisms, not excuses, and both are testable:
+
+1. **Confusable negatives change the operating point, and the test set did not
+   follow.** Training against hell/cell/alloy/apollo tightens the boundary
+   where near-misses live; scoring against uniformly-sampled negatives then
+   reads that tightening as a worse FRR at the same FAR. `eval.py` now takes
+   `--confusable-frac` so both sides can be matched — this run did not use it.
+2. **Equal epochs is unfair to augmentation.** Augmentation enlarges the
+   effective dataset, so 20 epochs is fewer passes over the true data
+   distribution than 20 epochs without it. The augmented runs may simply be
+   less converged. A fair comparison equalises steps-to-plateau, not epochs.
+
+### What this settles
+
+- The measurement problem is real and was the binding constraint. It is now
+  partly fixed (101 positives, 3 seeds) and partly not (variance still spans ten
+  clips).
+- **No configuration in this repository has been shown to beat any other.** The
+  best supported statement remains run 2's: a single-keyword English detector
+  reaches FRR ~0.14 at FAR ~0.05, with a seed-to-seed spread of roughly ±0.05.
+- Any future claim needs 3+ seeds, matched negative distributions, and enough
+  positives that one clip is not 1% of the metric.
+
+Artefacts: `ck/enfa_{base,fix}_s{0,1,2}.pt`.
