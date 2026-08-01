@@ -310,3 +310,50 @@ Worth stating because they are mechanisms, not excuses, and both are testable:
   positives that one clip is not 1% of the metric.
 
 Artefacts: `ck/enfa_{base,fix}_s{0,1,2}.pt`.
+
+---
+
+## Run 5 — 2026-08-01 — testing the two excuses run 4 offered
+
+Run 4 named two mechanisms that could explain why the fixes looked worse
+without them actually being worse. Both are testable; neither was allowed to
+stand as an assumption.
+
+### Mechanism 1 — negative-distribution mismatch: REJECTED
+
+Same six checkpoints, evaluated twice against the same 101 positives with only
+the negative composition changed (budget 120 per language so the fraction
+actually bites; 0% vs 70% confusable):
+
+| config | easy negatives | hard negatives | degradation |
+|---|---:|---:|---:|
+| baseline | 0.112 ± 0.074 | 0.129 ± 0.052 | **+0.017** |
+| + fixes | 0.201 ± 0.041 | 0.198 ± 0.030 | **−0.003** |
+
+Confusable training does exactly what it is supposed to: the fixes group loses
+nothing when the negatives get hard, while the baseline degrades. That part
+works.
+
+**But it does not explain the gap.** The degradation it buys is 0.017 FRR —
+against a between-config difference of 0.066 and a baseline seed standard
+deviation of 0.074. The mismatch is real and an order too small to be the
+reason. The fixes group is worse on easy negatives *and* on hard ones.
+
+### A flag that was silently doing nothing
+
+The first attempt at this comparison returned byte-identical numbers for both
+conditions. `--confusable-frac` was inert: the test split holds 334 negatives
+and the budget defaulted to 400, so every negative was taken regardless of the
+requested composition. A no-op ablation that reads as a null result is worse
+than a crash. The dataset now records `confusable_noop` per language, `eval.py`
+prints a warning naming the languages affected and how to fix it, and a test
+pins both the inert and the effective case.
+
+### Mechanism 2 — under-convergence: in progress
+
+The remaining candidate. At epoch 20 the baseline sits at train loss 0.07–0.17
+and still falling, while the augmented runs plateau at 0.244–0.254 across all
+three seeds. Equal epochs is fewer effective passes when augmentation enlarges
+the distribution, so the augmented config may simply not be finished. A 70-epoch
+run is under way to see whether its dev trajectory is still climbing at 20 or
+already flat.

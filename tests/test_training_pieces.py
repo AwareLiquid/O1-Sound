@@ -84,6 +84,34 @@ class TestConfusableSelection:
     def test_spec_defaults_to_uniform_negatives(self):
         assert KeywordSpec({"en": "hello"}).confusable_frac == 0.0
 
+    def test_confusable_frac_is_inert_when_the_budget_covers_the_pool(self, tmp_path):
+        """The trap this flag walked into: asking for 35% confusable negatives
+        while the budget already exceeds every available negative changes
+        nothing, because the whole pool is taken either way. Left unflagged, a
+        no-op ablation reads as a null result. The dataset must SAY so."""
+        import wave
+        import numpy as np
+        from o1sound.data import MSWCWakeWord
+
+        root = tmp_path / "mswc"
+        for word in ("hello", "hollow", "seven"):
+            d = root / "en" / "clips" / word
+            d.mkdir(parents=True)
+            for i in range(3):
+                with wave.open(str(d / f"{word}_{i}.wav"), "wb") as w:
+                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+                    w.writeframes((np.zeros(16000, dtype=np.int16)).tobytes())
+
+        spec = KeywordSpec({"en": "hello"}, negatives_per_language=1000,
+                           confusable_frac=0.35)
+        ds = MSWCWakeWord(root, spec, "train")
+        assert ds.confusable_noop.get("en") is True
+
+        spec2 = KeywordSpec({"en": "hello"}, negatives_per_language=2,
+                            confusable_frac=0.5)
+        ds2 = MSWCWakeWord(root, spec2, "train")
+        assert not ds2.confusable_noop
+
 
 class TestPooling:
     @pytest.mark.parametrize("mode", ["mean", "max", "attn"])

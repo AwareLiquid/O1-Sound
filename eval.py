@@ -78,6 +78,11 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--target-far", type=float, default=0.01)
     ap.add_argument("--out", default="")
+    ap.add_argument("--negatives", type=int, default=400,
+                    help="negative budget per language. Must be BELOW the number "
+                         "available for --confusable-frac to change anything: if "
+                         "the budget covers the whole pool, every negative is "
+                         "used and the fraction is inert")
     ap.add_argument("--confusable-frac", type=float, default=0.0,
                     help="fraction of eval negatives drawn from words nearest the "
                          "wake word by edit distance. A model trained on hard "
@@ -98,10 +103,18 @@ def main() -> int:
     # to class 1 and the per-language table becomes meaningless.
     multiclass = int(ck["config"].get("n_classes", 2)) > 2
     ds = MSWCWakeWord(args.root,
-                      KeywordSpec(GREETINGS, confusable_frac=args.confusable_frac),
+                      KeywordSpec(GREETINGS, negatives_per_language=args.negatives,
+                                  confusable_frac=args.confusable_frac),
                       args.split, multiclass=multiclass)
     if args.confusable_frac > 0:
-        print(f"eval negatives: {args.confusable_frac:.0%} confusable")
+        if ds.confusable_noop:
+            print(f"WARNING --confusable-frac had NO EFFECT for "
+                  f"{', '.join(ds.confusable_noop)}: the negative budget "
+                  f"({args.negatives}) covers every available negative, so the "
+                  f"whole pool is used regardless. Lower --negatives to make the "
+                  f"composition controllable.")
+        else:
+            print(f"eval negatives: {args.confusable_frac:.0%} confusable")
     if multiclass:
         print(f"multi-class checkpoint: {ck['config']['n_classes']} classes, "
               f"wake score = sum over greeting classes")

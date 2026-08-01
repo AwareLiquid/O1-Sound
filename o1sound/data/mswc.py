@@ -163,6 +163,7 @@ class MSWCWakeWord(Dataset):
         self.multiclass = multiclass
         self.augment = augment
         self.confusables: dict[str, list[str]] = {}
+        self.confusable_noop: dict[str, bool] = {}
         self.class_names: list[str] = ["_other_"]
         self.lang_to_class: dict[str, int] = {}
         if multiclass:
@@ -230,6 +231,14 @@ class MSWCWakeWord(Dataset):
         budget = self.spec.negatives_per_language
         n_conf = int(budget * self.spec.confusable_frac)
         chosen: list[Path] = []
+
+        if n_conf > 0 and len(word_dirs) and budget >= sum(
+                1 for d in word_dirs for p in d.iterdir() if keep(p)):
+            # The budget already covers every available negative, so no
+            # sampling happens and the confusable fraction cannot change the
+            # composition. Silently returning the same set would make an
+            # ablation look like a null result when it never ran.
+            self.confusable_noop[lang] = True
 
         if n_conf > 0:
             scored = sorted(
