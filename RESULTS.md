@@ -357,3 +357,60 @@ three seeds. Equal epochs is fewer effective passes when augmentation enlarges
 the distribution, so the augmented config may simply not be finished. A 70-epoch
 run is under way to see whether its dev trajectory is still climbing at 20 or
 already flat.
+
+---
+
+## Run 6 — 2026-08-04 — multi-class head, 3 seeds, en+fa
+
+**Verdict: the multi-class head does not lower mean FRR. It cuts seed variance
+by roughly 5x, which is the more useful result — every prior comparison in this
+file was drowning in that variance.**
+
+Same data and schedule as run 5 (en+fa, 671 train positives, 101 test
+positives, 20 epochs, balanced-accuracy checkpoint selection). The only change
+is `--multiclass`: one class per greeting whose wake folder is on disk, plus
+"other"; the wake decision is an OR over the greeting classes.
+
+### Result
+
+| config | test FRR @ FAR 0.05 | seeds |
+|---|---|---|
+| binary | 0.1386 ± **0.0524** | 0.198 / 0.119 / 0.099 |
+| multi-class | 0.1386 ± **0.0099** | 0.129 / 0.139 / 0.149 |
+
+Means agree to four decimals. Welch t = 0.00 — there is no mean effect to
+report, and none is claimed. The variance ratio is 28 (F, df 2,2), which clears
+the 95% threshold of 19.0, but an n=3 variance estimate is itself extremely
+noisy: **suggestive, not established.**
+
+### Why the variance result matters more than the mean
+
+Run 3 could not distinguish a 5-point FRR difference because the seed spread
+was ±0.05. Run 5 rejected mechanism 1 partly on that basis. With the
+multi-class head the spread is ±0.01, so a 5-point effect becomes a 5-sigma
+signal instead of a 1-sigma one. **The head did not make the model better; it
+made the experiment able to see.** That is worth having before any further
+ablation is run.
+
+The likely reason is mechanical rather than deep: a binary head must place one
+decision boundary that covers both "hello" and "سلام", and where it lands
+depends on initialisation. Per-class boundaries are each fit to one acoustic
+target, so there is less for the seed to move.
+
+### Verified before reading
+
+All three checkpoints were confirmed to carry `n_classes=3` and
+`head.weight=(3, 640)` before any number was interpreted. Run 4's contamination
+— three concurrent copies of the driver script racing on the same checkpoint
+paths, producing a 3-class and an 18-class checkpoint in the same "3-seed
+sweep" — is why that check now precedes the metrics.
+
+### Also fixed here
+
+Class construction derived the label set from the **spec** rather than from
+disk, so a 2-language corpus built an 18-way head in which 15 classes could
+never receive a positive example: softmax mass allocated to outputs that must
+never fire, and a checkpoint whose `class_names` claimed 17 languages when 2
+had trained. Classes are now built only for languages whose wake folder exists.
+
+Artefacts: `ck/enfa_mc_s{0,1,2}.pt`.

@@ -167,9 +167,16 @@ class MSWCWakeWord(Dataset):
         self.class_names: list[str] = ["_other_"]
         self.lang_to_class: dict[str, int] = {}
         if multiclass:
-            for lang in spec.positives:
-                self.lang_to_class[lang] = len(self.class_names)
-                self.class_names.append(f"{lang}:{spec.positives[lang]}")
+            # Build classes ONLY for languages whose wake folder is actually on
+            # disk. Deriving them from the spec created a class per configured
+            # greeting, so a 2-language corpus produced an 18-way head with 15
+            # classes that could never receive a positive example -- softmax mass
+            # spent on outputs that must never fire, and a checkpoint whose
+            # class_names claimed 17 languages when 2 had trained.
+            for lang, word in spec.positives.items():
+                if (self.root / lang / "clips" / word).is_dir():
+                    self.lang_to_class[lang] = len(self.class_names)
+                    self.class_names.append(f"{lang}:{word}")
 
         if not self.root.exists():
             raise FileNotFoundError(
