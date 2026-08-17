@@ -17,7 +17,7 @@ mic → log-mel (fixed, no weights) → liquid core (multi-timescale τ) → wak
 This section comes first on purpose.
 
 **Validated (runs today, in CI)**
-- 10 tests pass: streaming `step()` is numerically identical to the batched
+- 32 tests pass: streaming `step()` is numerically identical to the batched
   `forward()`, carried state stays constant over 500 frames, τ spans the
   configured range, the export CLI fits its budget, and the budget gate really
   fails the build when it cannot be met.
