@@ -34,6 +34,13 @@ This section comes first on purpose.
 - **Run 1** (2026-07-31, 9 languages, 91 wake clips): **FRR 0.909 at FAR
   0.049**, never firing at all for six of the nine. Dev 0.846 against a 0.984
   never-fire baseline — worse than saying no unconditionally.
+- **Run 7** (2026-08-18, 10 languages, full MSWC): dev acc **0.885**
+  (balanced 0.849), but per-language FRR is bounded by the worst language
+  (**1.000**, Italian, 2 positive clips) — most languages have 2–13 positive
+  clips against 400 negatives, so per-language numbers are noise there.
+  English remains the only language with meaningful data (FRR 0.098 at FAR
+  0.133, 41 clips). Checkpoint + ONNX published as a research artifact:
+  [release `research-2026-08-18`](https://github.com/AwareLiquid/O1-Sound/releases/tag/research-2026-08-18).
 - Same code, same config, same hardware; only the label set changed. **Miss
   rate fell to roughly one third**, which settles what Run 2 was built to
   settle: the architecture is not the blocker. Two variables moved (3.3× the
@@ -44,8 +51,13 @@ This section comes first on purpose.
   The planned fix is a multi-class head OR'd at inference, not more languages
   poured into one binary class. Reasoning in [RESULTS.md](RESULTS.md).
 
-**NOT validated — there is no shippable model in this repository**
-- **No production-grade weights ship here.**
+**Research weights — published, not production-grade**
+- A trained checkpoint ships as a GitHub Release
+  ([`research-2026-08-18`](https://github.com/AwareLiquid/O1-Sound/releases/tag/research-2026-08-18)):
+  `o1sound.pt` (4.8 MB) + exported `o1sound.onnx` (fp32 5.04 MB) +
+  per-language metrics. It is a **research artifact**: English shows a usable
+  signal, multilingual is open (see Run 7 above). Not a production wake-word
+  model.
   `export_onnx.py` without `--ckpt` exports an *untrained* graph: the size is
   real, the behaviour is noise. It says so when you run it.
 - The greeting list in `o1sound/keywords.py` covers 20 languages, but a language
@@ -126,7 +138,7 @@ export_onnx.py          streaming ONNX + int8 + hard size gate
 
 ## Related
 
-- [everest-an/M1](https://github.com/everest-an/M1) — the MT-LNN / O-Series
+- [AwareLiquid/M1](https://github.com/AwareLiquid/M1) — the MT-LNN / O-Series
   research line this core comes from.
 - [awareliquid.ai](https://awareliquid.ai) — benchmarks and retractions.
 
