@@ -80,6 +80,24 @@ python eval.py  --ckpt checkpoints/o1sound.pt --root data/mswc --split test --ou
 python export_onnx.py --ckpt checkpoints/o1sound.pt --out dist/o1sound.onnx --int8
 ```
 
+## Try it live (streaming demo)
+
+Real-time wake detection from a microphone (or a WAV file) through the same
+streaming `step()` path the ONNX graph uses:
+
+```bash
+pip install sounddevice
+python scripts/demo_stream.py                 # microphone, threshold 0.9
+python scripts/demo_stream.py --wav x.wav     # replay a 16kHz wav instead
+python scripts/demo_stream.py --threshold 0.95
+python scripts/demo_stream.py --list-devices
+```
+
+Carried state is 5,120 bytes per stream and constant — watch it fire on
+"hello / hallo / hola". Honest boundary: this is the research checkpoint
+(multilingual Run 7); on out-of-domain audio (e.g. pure tones) it can
+false-trigger — it is not a production wake-word engine.
+
 `eval.py` reports **false-reject rate at a fixed false-accept budget, per
 language**, and prints the worst language separately. That worst number — not
 the mean, not accuracy — is what bounds any multilingual claim made about this
