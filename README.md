@@ -93,6 +93,10 @@ python scripts/demo_stream.py --threshold 0.95
 python scripts/demo_stream.py --list-devices
 ```
 
+**▶️ Running it on a Raspberry Pi?** See
+[docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md) — the full step-by-step (OS setup,
+ONNX Runtime install, live mic demo, the 5,120-byte constant state in action).
+
 Carried state is 5,120 bytes per stream and constant — watch it fire on
 "hello / hallo / hola". Honest boundary: this is the research checkpoint
 (multilingual Run 7); on out-of-domain audio (e.g. pure tones) it can
