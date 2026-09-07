@@ -115,6 +115,11 @@ def main() -> int:
     dev_ds = MSWCWakeWord(args.root, spec, "dev", args.window, seed=args.seed + 1,
                           multiclass=args.multiclass)
     pos, neg = train_ds.label_balance()
+    # Loud failure gate: a missing codec silently zero-fills every clip and
+    # the model trains on silence (loss stuck at uniform). Verify decode up
+    # front and abort with a named cause instead.
+    train_ds.verify_decodeable()
+    dev_ds.verify_decodeable()
     print(f"train {len(train_ds)} clips ({pos} wake / {neg} negative) "
           f"over {len(train_ds.languages())} languages; dev {len(dev_ds)}")
     missing = [lg for lg, n in train_ds.skipped.items() if n == -1]

@@ -270,6 +270,34 @@ class MSWCWakeWord(Dataset):
         out += [Example(p, 0, lang) for p in chosen]
         return out
 
+    def verify_decodeable(self, n: int = 32, max_fail_frac: float = 0.5) -> None:
+        """Fail loudly if a sample of clips cannot be decoded.
+
+        A missing codec (e.g. `soundfile` for .opus) makes `__getitem__`
+        silently substitute zeros for every clip — the model then "trains"
+        on silence: loss stuck at the uniform level, no error raised. This
+        decodes a small sample up front and raises when too many fail,
+        naming the file type and the likely missing dependency.
+        """
+        rng = random.Random(0)
+        idxs = rng.sample(range(len(self.examples)), min(n, len(self.examples)))
+        fails, first_ext = 0, None
+        for i in idxs:
+            p = self.examples[i].path
+            first_ext = first_ext or p.suffix
+            try:
+                _read_any(p)
+            except Exception:
+                fails += 1
+        frac = fails / len(idxs)
+        if frac >= max_fail_frac:
+            raise RuntimeError(
+                f"{fails}/{len(idxs)} sampled clips failed to decode "
+                f"(type: {first_ext}). This usually means an audio codec "
+                f"dependency is missing — e.g. `pip install soundfile` for "
+                f".opus/.mp3 — or the data files are corrupt. Training would "
+                f"otherwise silently learn from zero-filled silence.")
+
     def __len__(self) -> int:
         return len(self.examples)
 
