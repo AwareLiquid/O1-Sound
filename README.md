@@ -107,6 +107,27 @@ language**, and prints the worst language separately. That worst number — not
 the mean, not accuracy — is what bounds any multilingual claim made about this
 model.
 
+## FreeRTOS / embedded port
+
+The streaming model is plain C in [`freertos/`](freertos/) — log-mel + liquid
+core + head, constant 5,120-byte state, one frame at a time. Host-side parity
+gate: the C logits match PyTorch frame-by-frame within 1e-3 of the logit span
+(`python tests/test_c_parity.py`). A FreeRTOS task wiring (I2S ring buffer →
+step → debounced wake) ships as `freertos/freertos_demo.c`. The 480-point DFT
+in the reference kernel is O(N²); the production MCU path is a mixed-radix FFT
+(see `freertos/README.md`). Nothing here is measured on real hardware yet.
+
+## Multiclass experiment (2026-09)
+
+The OR-head fix planned in RESULTS.md ran end-to-end on 10 languages
+(en/de/fr/es/pt/pl/ru/cs/fa/sv-SE): one class per greeting + "other", wake
+decision = OR over greeting classes. Dev balanced accuracy 0.84 (vs 0.50 =
+chance); test-set FRR 0.35 @ FAR 0.046 overall — **the multilingual claim
+remains unsupported**: worst-language FRR is 1.000 (ru, 2 test clips), and the
+tail languages have 2–15 clips. Same conclusion as Runs 1/7: the architecture
+is not the blocker, per-language data is. Checkpoint + per-language metrics in
+the [`research` release notes](https://github.com/AwareLiquid/O1-Sound/releases).
+
 ## Why a liquid core
 
 Each channel carries its own learnable time constant τ, parameterised as

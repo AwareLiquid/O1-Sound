@@ -11,3 +11,4 @@ venv/
 *.pt
 .pytest_cache/
 .DS_Store
+/freertos/generated/
