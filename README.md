@@ -45,6 +45,16 @@ This section comes first on purpose.
   rate fell to roughly one third**, which settles what Run 2 was built to
   settle: the architecture is not the blocker. Two variables moved (3.3× the
   positives, one acoustic target) and this pair of runs does not separate them.
+- **Run 8 (v2, 2026-09-29, 10 languages, GPU A100)** — improved recipe
+  (hidden 896, 40 epochs, 400 negatives, multiclass OR inference): dev acc
+  **0.838**, dev balanced **0.8815** (Run 7: 0.849), worst-language dev FRR
+  **0.600** (sv-SE; Run 7: 1.000). On the held-out test split **no operating
+  point reaches FAR ≤ 1%** — the production bar is still unmet. Same honest
+  verdict as Run 7: per-language numbers at 2–13 positive clips are noise;
+  the multilingual claim remains unsupported at this data scale. The gap is
+  negative-sample diversity, not the model. Checkpoint:
+  `o1sound_multiclass_v2.pt` (9.8 MB, on the training server; HF export
+  pending the FAR fix).
 - **Not production quality.** Deployed wake words run single-digit FRR at a
   false-accept rate quoted per hour, not per clip. And **the multilingual claim
   is still unsupported** — Run 1 is evidence against it at this data scale.
