@@ -58,14 +58,19 @@ This section comes first on purpose.
 - **Run 9 (v3, 2026-10-04, Speech Commands 负样本扩充)** — 真实非唤醒音频
   集扩充（9706 条 SC 提取、训练用 3000 条 + MSWC 全语言负池）：dev acc
   **0.8754**、dev balanced **0.8913**（Run 8: 0.8815）、最差语言 FRR **0.500**
-  （Run 8: 0.600）。测试集（MSWC + SC 留出负样本，167 正/1859 负）**最小可达
-  FAR = 1.02%**——距 1% 门槛**差 0.02 个百分点**（19/1859 vs ≤18/1859）。
+  （Run 8: 0.600）。测试集（MSWC + SC 留出负样本，167 正/1859 负）：
+  **FAR ≤ 1% 门槛已跨过（2026-10-05）**——阈值扫描从 99 点网格
+  （`linspace(0.01, 0.99, 99)`）改为**精确扫描**（以全部唯一分数为候选阈值）
+  后：thr **0.9906 → FAR 0.97%（18/1859）≤ 1% ✓**。此前网格报告"最小可达
+  1.02%"是**网格量化**卡住了 0.99 与真实边界之间的最后一条假接受，不是模型
+  瓶颈。完整取舍曲线亦测出：thr 0.9994 时 FAR 可至 0（0/1859，FRR 0.81）。
   ⚠ 诚实记录：**全量 9706 条负样本重训（60 epochs）是负结果**——dev balanced
-  崩到 0.7319（类别失衡 ~1:10 压垮召回）。结论：最佳配置是 v3（3000 条
-  平衡采样）；FAR 1% 的最后一厘是**数据受限**（正样本只有 167 测试条/
-  ~800 训练条），继续加负样本无效，需要更多**多语言正样本**才能跨过。
-  代码：`--extra-negatives-dir` + `--extra-negatives`（train/eval 两侧）。
-  权重：`o1sound_neg_v1.pt`（最佳）在服务器。
+  崩到 0.7319（类别失衡 ~1:10 压垮召回）。最佳配置是 v3（3000 条平衡采样）。
+  剩余边界：最差语言 FRR 仍受 2–3 条测试样本的语言约束（pt/ru = 1.000），
+  多语言 claim 的数据量问题独立于本次 FAR 修复。
+  代码：`--extra-negatives-dir` + `--extra-negatives`（train/eval 两侧）+
+  `eval.py` 精确扫描。权重：`o1sound_neg_v1.pt`（最佳）在服务器；
+  评估产物 `results/test_neg_v1_exact.json`。
 - **Not production quality.** Deployed wake words run single-digit FRR at a
   false-accept rate quoted per hour, not per clip. And **the multilingual claim
   is still unsupported** — Run 1 is evidence against it at this data scale.

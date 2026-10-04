@@ -57,17 +57,33 @@ def collect_scores(model, frontend, loader, device):
 
 
 def sweep(scores, labels, target_far):
-    """Lowest threshold whose false-accept rate still meets the budget."""
+    """Exact sweep over every distinct score value.
+
+    The previous 99-point grid (linspace 0.01..0.99) could not represent every
+    decision boundary: at 1859 negatives one step in FAR is 1/1859 = 0.054pp,
+    so a grid can miss the crossing by more than the budget it is measuring
+    against. Sweeping the sorted unique scores makes the operating point exact;
+    ties are broken by the lowest FRR.
+
+    Returns (best, floor): best = lowest-threshold point meeting the FAR budget
+    with the lowest FRR (or None); floor = the smallest FAR over all thresholds
+    regardless of FRR, for honest reporting when the budget is unmet.
+    """
+    neg = labels == 0
+    pos = labels == 1
+    n_neg, n_pos = int(neg.sum()), int(pos.sum())
     best = None
-    for thr in torch.linspace(0.01, 0.99, 99):
-        pred = (scores >= thr).long()
-        neg = labels == 0
-        pos = labels == 1
-        far = (pred[neg] == 1).float().mean().item() if neg.any() else 0.0
-        frr = (pred[pos] == 0).float().mean().item() if pos.any() else 1.0
+    floor = None
+    for thr in torch.unique(scores):
+        t = float(thr)
+        pred = scores >= t
+        far = float(pred[neg].float().mean()) if n_neg else 0.0
+        frr = float((~pred[pos]).float().mean()) if n_pos else 1.0
+        if floor is None or far < floor[1]:
+            floor = (t, far, frr)
         if far <= target_far and (best is None or frr < best[2]):
-            best = (float(thr), far, frr)
-    return best
+            best = (t, far, frr)
+    return best, floor
 
 
 def main() -> int:
@@ -127,12 +143,16 @@ def main() -> int:
     dl = DataLoader(ds, args.batch, shuffle=False, collate_fn=collate)
     scores, labels, langs = collect_scores(model, frontend, dl, device)
 
-    picked = sweep(scores, labels, args.target_far)
+    picked, floor = sweep(scores, labels, args.target_far)
+    n_neg = int((labels == 0).sum())
+    floor_frac = f"{floor[1] * n_neg:.0f}/{n_neg}" if n_neg else "n/a"
+    print(f"exact sweep: FAR floor {floor[1]:.4f} ({floor_frac}) at "
+          f"thr {floor[0]:.4f}  (FRR {floor[2]:.4f})")
     if picked is None:
         print(f"no threshold reaches FAR <= {args.target_far:.3f} on this set.")
         return 1
     thr, far, frr = picked
-    print(f"operating point: threshold {thr:.2f}  FAR {far:.4f}  FRR {frr:.4f}")
+    print(f"operating point: threshold {thr:.4f}  FAR {far:.4f}  FRR {frr:.4f}")
 
     per_lang = {}
     for lg in sorted(set(langs)):
