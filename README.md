@@ -55,6 +55,17 @@ This section comes first on purpose.
   negative-sample diversity, not the model. Checkpoint:
   `o1sound_multiclass_v2.pt` (9.8 MB, on the training server; HF export
   pending the FAR fix).
+- **Run 9 (v3, 2026-10-04, Speech Commands 负样本扩充)** — 真实非唤醒音频
+  集扩充（9706 条 SC 提取、训练用 3000 条 + MSWC 全语言负池）：dev acc
+  **0.8754**、dev balanced **0.8913**（Run 8: 0.8815）、最差语言 FRR **0.500**
+  （Run 8: 0.600）。测试集（MSWC + SC 留出负样本，167 正/1859 负）**最小可达
+  FAR = 1.02%**——距 1% 门槛**差 0.02 个百分点**（19/1859 vs ≤18/1859）。
+  ⚠ 诚实记录：**全量 9706 条负样本重训（60 epochs）是负结果**——dev balanced
+  崩到 0.7319（类别失衡 ~1:10 压垮召回）。结论：最佳配置是 v3（3000 条
+  平衡采样）；FAR 1% 的最后一厘是**数据受限**（正样本只有 167 测试条/
+  ~800 训练条），继续加负样本无效，需要更多**多语言正样本**才能跨过。
+  代码：`--extra-negatives-dir` + `--extra-negatives`（train/eval 两侧）。
+  权重：`o1sound_neg_v1.pt`（最佳）在服务器。
 - **Not production quality.** Deployed wake words run single-digit FRR at a
   false-accept rate quoted per hour, not per clip. And **the multilingual claim
   is still unsupported** — Run 1 is evidence against it at this data scale.

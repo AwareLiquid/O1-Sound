@@ -111,6 +111,10 @@ class KeywordSpec:
 
     positives: dict[str, str]
     negatives_per_language: int = 400
+    # 真实非唤醒音频集（Speech Commands 等）——补负样本多样性：
+    # MSWC 词内负样本教不会模型拒绝"词外"的真实音频（FAR≤1% 未达的根因）。
+    extra_negative_dir: str = ""
+    extra_negatives: int = 3000
     # Uniformly-sampled negatives never test the boundary where it matters: a
     # detector only has to beat "hello" against "seven" to look fine, and then
     # fires on "hollow" in the field. Reserve this fraction of the negative
@@ -186,6 +190,22 @@ class MSWCWakeWord(Dataset):
         self.examples: list[Example] = []
         for lang, word in spec.positives.items():
             self.examples.extend(self._collect_language(lang, word))
+
+        if spec.extra_negative_dir:
+            xdir = Path(spec.extra_negative_dir)
+            extra = sorted(q for q in xdir.rglob("*.wav") if q.is_file())
+            rng_x = random.Random(seed + 99)
+            rng_x.shuffle(extra)
+            extra = extra[: spec.extra_negatives]
+            n_dev = int(len(extra) * 0.15)
+            n_test = int(len(extra) * 0.15)
+            if split == "train":
+                take = extra[n_dev + n_test:]
+            elif split == "dev":
+                take = extra[:n_dev]
+            else:
+                take = extra[n_dev:n_dev + n_test]
+            self.examples.extend(Example(q, 0, "_extra_") for q in take)
         if not self.examples:
             raise RuntimeError(
                 f"no clips found under {self.root} for split={split!r}. "

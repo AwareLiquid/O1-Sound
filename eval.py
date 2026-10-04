@@ -89,6 +89,10 @@ def main() -> int:
                          "negatives and scored on uniform ones is measured on a "
                          "distribution shift, not on its quality — match this to "
                          "training, or report both")
+    ap.add_argument("--extra-negatives-dir", default="",
+                    help="directory of real non-wake audio; test-side FAR "
+                         "must include it to be meaningful")
+    ap.add_argument("--extra-negatives", type=int, default=3000)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -104,6 +108,8 @@ def main() -> int:
     multiclass = int(ck["config"].get("n_classes", 2)) > 2
     ds = MSWCWakeWord(args.root,
                       KeywordSpec(GREETINGS, negatives_per_language=args.negatives,
+                                  extra_negative_dir=getattr(args, "extra_negatives_dir", ""),
+                                  extra_negatives=getattr(args, "extra_negatives", 3000),
                                   confusable_frac=args.confusable_frac),
                       args.split, multiclass=multiclass)
     if args.confusable_frac > 0:

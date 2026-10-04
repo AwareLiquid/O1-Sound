@@ -101,11 +101,18 @@ def main() -> int:
     ap.add_argument("--confusable-frac", type=float, default=0.0,
                     help="fraction of the negative budget reserved for words "
                          "closest to the wake word by edit distance")
+    ap.add_argument("--extra-negatives-dir", default="",
+                    help="directory of real non-wake audio (Speech Commands) "
+                         "to expand the negative pool (FAR diversity)")
+    ap.add_argument("--extra-negatives", type=int, default=3000,
+                    help="cap on extra negative clips sampled")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     device = torch.device(args.device)
     spec = KeywordSpec(GREETINGS, negatives_per_language=args.negatives,
+                       extra_negative_dir=args.extra_negatives_dir,
+                       extra_negatives=args.extra_negatives,
                        confusable_frac=args.confusable_frac)
 
     aug = WaveformAugment(seed=args.seed) if args.augment else None
